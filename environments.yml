@@ -1,0 +1,24 @@
+name: gpml
+channels:
+  - pytorch
+  - conda-forge
+  - nvidia
+  - nvidia/label/cuda-12.4.1
+  - defaults
+  - https://repo.anaconda.com/pkgs/main
+  - https://repo.anaconda.com/pkgs/r
+  - https://repo.anaconda.com/pkgs/msys2
+dependencies:
+  - python=3.8
+  - pandas==2.0.3
+  - scipy==1.10.1
+  - seaborn==0.12.2
+  - pyyaml==6.0.1
+  - nvidia/label/cuda-12.4.1::cuda
+  - nvidia/label/cuda-12.4.1::cuda-toolkit
+  - pytorch
+  - pytorch-cuda=12.4
+  - torchaudio
+  - torchvision
+  - conda-forge::openai-clip
+  - scikit-learn==1.3.2
