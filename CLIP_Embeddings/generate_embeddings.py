@@ -94,8 +94,8 @@ if __name__ == "__main__":
     """Generates embeddings for the geoguessr, tourist and aerial datasets and saves them to csv files
     """
     parser = argparse.ArgumentParser(description='Generate Embeddings')
-    parser.add_argument('--yaml_path', metavar='str', required=True,
-                        help='The path to the yaml file with the stored paths')
+    parser.add_argument('--yaml_path', metavar='str', required=False,
+                        help='The path to the yaml file with the stored paths', default='../paths.yaml')
     parser.add_argument('-d', '--debug', action='store_true',
                         required=False, help='Enable debug mode', default=False)
     args = parser.parse_args()

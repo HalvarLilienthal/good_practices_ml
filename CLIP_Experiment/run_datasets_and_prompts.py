@@ -7,7 +7,6 @@ from utils import load_dataset
 import utils.load_dataset as geo_data
 import clip
 import torch
-import csv
 import pandas as pd
 import argparse
 import yaml
@@ -92,6 +91,7 @@ class ModelTester:
             for batch_number, (images, labels) in enumerate(tqdm.tqdm(DataLoader(self.test_set, batch_size=self.batch_size), desc=f"Testing on {self.test_set.name}")):
 
                 images = images.to(device)
+                country_tokens = country_tokens.to(device)
 
                 with torch.no_grad():
 
@@ -206,8 +206,8 @@ if __name__ == "__main__":
     """Runs the initial CLIP experiments
     """
     parser = argparse.ArgumentParser(description='Pretrained Model')
-    parser.add_argument('--yaml_path', metavar='str', required=True,
-                        help='The path to the yaml file with the stored paths')
+    parser.add_argument('--yaml_path', metavar='str', required=False,
+                        help='The path to the yaml file with the stored paths', default='../paths.yaml')
     parser.add_argument('-d', '--debug', action='store_true',
                         required=False, help='Enable debug mode', default=False)
     args = parser.parse_args()
