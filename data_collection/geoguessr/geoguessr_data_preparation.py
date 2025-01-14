@@ -66,7 +66,7 @@ def prepare_geoguessr_data(REPO_PATH: str, DATA_PATH: str) -> None:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Prepare the geoguessr folders')
-    parser.add_argument('--yaml_path', metavar='str', required=True, help='The path to the yaml file with the stored paths')
+    parser.add_argument('--yaml_path', metavar='str', required=False, help='The path to the yaml file with the stored paths', default='../../paths.yaml')
     args = parser.parse_args()
     with open(args.yaml_path) as file:
         paths = yaml.safe_load(file)
