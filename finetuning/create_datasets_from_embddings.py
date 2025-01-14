@@ -95,13 +95,13 @@ def create_datasets_from_embddings(
     with torch.no_grad():
         # read in and balance each dataset
         geo_embed = pd.read_csv(
-            os.path.join(REPO_PATH, "CLIP_Embeddings/Image/geoguessr_embeddings.csv")
+            os.path.join(REPO_PATH, "CLIP_Embeddings/Image/geoguessr_embeddings_0.csv")
         )
         aerial_df = pd.read_csv(
-            os.path.join(REPO_PATH, "CLIP_Embeddings/Image/aerial_embeddings.csv")
+            os.path.join(REPO_PATH, "CLIP_Embeddings/Image/aerial_embeddings_0.csv")
         )
         tourist_df = pd.read_csv(
-            os.path.join(REPO_PATH, "CLIP_Embeddings/Image/tourist_embeddings.csv")
+            os.path.join(REPO_PATH, "CLIP_Embeddings/Image/tourist_embeddings_0.csv")
         )
 
         # Print dataset information
