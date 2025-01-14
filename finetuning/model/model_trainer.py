@@ -225,8 +225,9 @@ class ModelTrainer():
                 train_loader = DataLoader(
                     train_dataset,batch_size=self.batch_size, shuffle=False, worker_init_fn=self.seed_worker, generator=g)
                 avg_training_loss = self.train_one_fold(train_loader)
-                self.writer.add_scalar(
-                    'Training Loss', avg_training_loss, epoch_index*self.num_folds + fold_index)
+                if avg_training_loss:
+                    self.writer.add_scalar(
+                        'Training Loss', avg_training_loss, epoch_index*self.num_folds + fold_index)
 
                 self.model.eval()  # Set the model to evaluation mode
 
@@ -248,7 +249,7 @@ class ModelTrainer():
                     target_idx = [self.country_list[self.country_list['Country'] == target].index[0] for target in targets]
                     if epoch_index == self.num_epochs-1:
                         prediction = [self.country_list.iloc[predicitions_idx[i]]['Country'] for i in range(0, len(predicitions_idx))]
-                        validation_results_dict = {'Label': targets, 'Prediction': prediction, 'Output': outputs.numpy().tolist()}
+                        validation_results_dict = {'Label': targets, 'Prediction': prediction, 'Output': outputs.cpu().numpy().tolist()}
                         validation_results_dict = pd.DataFrame(validation_results_dict)
                         validation_results_dict.to_csv(self.log_dir + f'/validation_results.csv', index=False)
                     try:
@@ -284,7 +285,7 @@ class ModelTrainer():
             except Exception as e:
                 print(e)
             prediction = [self.country_list.iloc[predicitions_idx[i]]['Country'] for i in range(0, len(predicitions_idx))]
-            test_results_dict = {'Label': targets, 'Prediction': prediction, 'Output': outputs.numpy().tolist()}
+            test_results_dict = {'Label': targets, 'Prediction': prediction, 'Output': outputs.cpu().numpy().tolist()}
             test_result_dataframe = pd.DataFrame(test_results_dict)
             test_result_dataframe.to_csv(self.log_dir + f'/test_results_{test_name}.csv', index=False)
         print('Training Dataset {} Test Accuracy: {}, Test Regional Accuracy: {}'.format(
@@ -421,7 +422,7 @@ def create_and_train_model(REPO_PATH: str, seed: int = 1234, training_datasets=[
     country_list = f'{REPO_PATH}/utils/country_list/country_list_region_and_continent.csv'
     region_list = f'{REPO_PATH}/utils/country_list/UNSD_Methodology.csv'
 
-    testing_directory = f'{REPO_PATH}/CLIP_Embeddings/Embeddings/CLIP_Embeddings/Testing'
+    testing_directory = f'{REPO_PATH}/CLIP_Embeddings/Testing'
     test_df = pd.read_csv(f'{testing_directory}/known_test_data.csv')
     zeroshot_test_df = pd.read_csv(f'{testing_directory}/zero_shot_test_data.csv')
     test_dataset = load_dataset.EmbeddingDataset_from_df(
@@ -440,7 +441,7 @@ def create_and_train_model(REPO_PATH: str, seed: int = 1234, training_datasets=[
 
     for elem in training_datasets:
         train_df = pd.read_csv(
-            f'{REPO_PATH}/CLIP_Embeddings/Embeddings/CLIP_Embeddings/Training/{elem}')
+            f'{REPO_PATH}/CLIP_Embeddings/Training/{elem}')
         
         hyperparameters = [
             {'starting_regional_loss_portion': 0.0,
