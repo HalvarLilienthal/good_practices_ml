@@ -86,7 +86,7 @@ class ModelTrainer():
         self.writer = SummaryWriter(log_dir=self.log_dir)
         self.start_training()
 
-    def add_metrics_and_plot_tb(self, outputs: torch.Tensor, targets: list[str], name: str, step: int):
+    def add_metrics_and_plot_tb(self, outputs: torch.Tensor, targets, name: str, step: int):
         per_class_precision, per_class_recall, per_class_f1, _, target_idx = self.criterion.calculate_metrics_per_class(outputs, targets)
         self.writer.add_scalar(f'{name} avg Class Precision', per_class_precision.mean(), step)
         self.writer.add_scalar(f'{name} avg Class Recall', per_class_recall.mean(), step)
