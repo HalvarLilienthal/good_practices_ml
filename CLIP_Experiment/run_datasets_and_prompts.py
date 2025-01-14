@@ -92,6 +92,7 @@ class ModelTester:
             for batch_number, (images, labels) in enumerate(tqdm.tqdm(DataLoader(self.test_set, batch_size=self.batch_size), desc=f"Testing on {self.test_set.name}")):
 
                 images = images.to(device)
+                country_tokens = country_tokens.to(device)
 
                 with torch.no_grad():
 
