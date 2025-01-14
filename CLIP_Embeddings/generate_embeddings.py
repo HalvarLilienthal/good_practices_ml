@@ -73,6 +73,10 @@ def generate_embeddings(REPO_PATH,DATA_PATH):
         simple_tokens = clip.tokenize(country_list)
         promt_token = clip.tokenize(country_prompt)
 
+        simple_tokens = simple_tokens.to(device)
+        promt_token = promt_token.to(device)
+        model = model.to(device)
+
         simple_embedding = model.encode_text(simple_tokens)
         prompt_embedding = model.encode_text(promt_token)
 
