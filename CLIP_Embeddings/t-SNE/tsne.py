@@ -412,8 +412,8 @@ if __name__ == "__main__":
     """Runs t-SNE on a dataset. The dataset_name along with the binary values of only_europe and include_distances can be modified below
     """
     parser = argparse.ArgumentParser()
-    parser.add_argument('--yaml_path', metavar='str', required=True,
-                        help='The path to the yaml file with the stored paths')
+    parser.add_argument('--yaml_path', metavar='str', required=False,
+                        help='The path to the yaml file with the stored paths', default='../../paths.yaml')
     parser.add_argument('--dataset_name', metavar='str',
                         required=False, help='Name of dataset to conduct tsne analysis on', default='geoguessr')
     parser.add_argument('-d', '--debug', action='store_true',
