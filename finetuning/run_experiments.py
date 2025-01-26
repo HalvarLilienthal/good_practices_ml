@@ -10,7 +10,7 @@ if __name__ == "__main__":
     """Runs the initial CLIP experiments
     """
     parser = argparse.ArgumentParser(description='Pretrained Model')
-    parser.add_argument('--yaml_path', metavar='str', required=True,
+    parser.add_argument('--yaml_path', metavar='str', required=False,
                         help='The path to the yaml file with the stored paths', default='../paths.yaml')
     parser.add_argument('-d', '--debug', action='store_true',
                         required=False, help='Enable debug mode', default=False)
