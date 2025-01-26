@@ -1,5 +1,8 @@
 import argparse
 import time
+
+from codecarbon import OfflineEmissionsTracker
+
 import create_datasets_from_embddings
 import sys
 sys.path.append("./../")
@@ -25,6 +28,21 @@ if __name__ == "__main__":
         all_start = time.time()
         for seed in seeds:
             start = time.time()
-            trainer.create_and_train_model(REPO_PATH, seed)
-            print("Train Time for seed", seed, "is", time.time() - start)
+
+            tracker = OfflineEmissionsTracker(
+                experiment_id=f"{seed}",
+                country_iso_code="DEU",
+                measure_power_secs=5,
+                project_name="run_experiments.py",
+                tracking_mode="process",
+                # allow_multiple_runs=True,    # Set this to True to allow multiple instances of codecarbon to run at the same time
+            )
+
+            tracker.start()
+
+            try:
+                trainer.create_and_train_model(REPO_PATH, seed)
+                print("Train Time for seed", seed, "is", time.time() - start)
+            finally:
+                tracker.stop()
         print("Full Train Time is", time.time() - all_start)
