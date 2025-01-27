@@ -1,4 +1,5 @@
 import argparse
+import os
 import time
 
 from codecarbon import OfflineEmissionsTracker
@@ -17,6 +18,10 @@ if __name__ == "__main__":
                         help='The path to the yaml file with the stored paths', default='../paths.yaml')
     parser.add_argument('-d', '--debug', action='store_true',
                         required=False, help='Enable debug mode', default=False)
+    parser.add_argument('--cpu_count_as_num_workers', action='store_true', required=False, help=f'Set the number of workers used for data loading. Defaults to {os.cpu_count()}, your number of cpu cores',
+                        default=False)
+    parser.add_argument('--pin_memory', action='store_true', required=False,
+                        help='Set if pin_memory should be used in the data loading', default=False)
     args = parser.parse_args()
 
     with open(args.yaml_path) as file:
@@ -41,7 +46,9 @@ if __name__ == "__main__":
             tracker.start()
 
             try:
-                trainer.create_and_train_model(REPO_PATH, seed)
+                trainer.create_and_train_model(REPO_PATH, seed, 
+                                               pin_memory=args.pin_memory,
+                                               num_workers=os.cpu_count() if args.cpu_count_as_num_workers else 0)
                 print("Train Time for seed", seed, "is", time.time() - start)
             finally:
                 tracker.stop()
