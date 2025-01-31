@@ -25,10 +25,13 @@ import matplotlib.pyplot as plt
 import random
 import numpy as np
 
-
 class ModelTrainer():
 
-    def __init__(self, model: torch.nn.Module, train_dataframe: pd.DataFrame, country_list: str, region_list: str, num_folds: int=10, num_epochs:int=3, learning_rate: float=0.001, starting_regional_loss_portion: float=0.9, regional_loss_decline: float=0.2, train_dataset_name: str="Balanced", batch_size: int=260, seed: int=123) -> None:
+    def __init__(self, model: torch.nn.Module, train_dataframe: pd.DataFrame, country_list: str,
+                 region_list: str, num_folds: int=10, num_epochs:int=3, learning_rate: float=0.001,
+                 starting_regional_loss_portion: float=0.9, regional_loss_decline: float=0.2,
+                 train_dataset_name: str="Balanced", batch_size: int=260, seed: int=123,
+                 pin_memory:bool=False, num_workers:int=0) -> None:
         """
         Initializes the ModelTrainer class.
 
@@ -80,6 +83,8 @@ class ModelTrainer():
         self.regional_portion = starting_regional_loss_portion
         self.regional_loss_decline = regional_loss_decline
         self.batch_size = batch_size
+        self.pin_memory = pin_memory
+        self.num_workers = num_workers
 
         # self.region_criterion = Regional_Loss(self.country_list, self.region_list)
         self.log_dir=f'finetuning/runs/seed_{seed}/{self.training_dataset_name[:-4]}/starting_regional_loss_portion-{starting_regional_loss_portion}/regional_loss_decline-{regional_loss_decline}/{self.timestamp}'
@@ -143,6 +148,7 @@ class ModelTrainer():
             self.optimizer.zero_grad()
             # Every data instance is an input + label pair
             inputs, labels = data
+            inputs = inputs.to(self.device)
             # Make predictions for this batch
             outputs = self.model(inputs)
 
@@ -163,6 +169,7 @@ class ModelTrainer():
             # print(f"batch {i} loss: {loss}")train_dataframe
     def validate(self, epoch_index, fold_index, validation_dataset):
         inputs, targets = validation_dataset[:]
+        inputs = inputs.to(self.device)
         outputs = self.model(inputs)
         
         avg_validation_region_accuracy = self.criterion.claculate_region_accuracy(
@@ -187,7 +194,7 @@ class ModelTrainer():
         # self.writer.add_scalar('Validation Loss', avg_validation_loss, epoch_index*self.num_folds + fold_index)
 
         # torch.save(self.model.state_dict(),f'finetuning/saved_models/model_{self.training_dataset_name}_epoch_{epoch_index}_batch_{i}')
-    def seed_worker(worker_id):
+    def seed_worker(worker_id, seed=None):
         worker_seed = torch.initial_seed() % 2**32
         np.random.seed(worker_seed)
         random.seed(worker_seed)
@@ -223,7 +230,10 @@ class ModelTrainer():
                 g.manual_seed(0)
 
                 train_loader = DataLoader(
-                    train_dataset,batch_size=self.batch_size, shuffle=False, worker_init_fn=self.seed_worker, generator=g)
+                    train_dataset,batch_size=self.batch_size,
+                    num_workers=self.num_workers,
+                    pin_memory=self.pin_memory,
+                    shuffle=False, worker_init_fn=self.seed_worker, generator=g)
                 avg_training_loss = self.train_one_fold(train_loader)
                 if avg_training_loss:
                     self.writer.add_scalar(
@@ -262,8 +272,9 @@ class ModelTrainer():
                        f'saved_models/model_{self.training_dataset_name}_{timestamp}_epoch_{epoch_index+1}')
 
 
-    def test_model(self, test_dataset, test_name):
+    def test_model(self, test_dataset, test_name) -> None:
         inputs, targets = test_dataset[:]
+        inputs = inputs.to(self.device)
         outputs = self.model(inputs)
         
         avg_test_region_accuracy = self.criterion.claculate_region_accuracy(
@@ -408,7 +419,7 @@ class ModelTrainer():
         return loss
 
 
-def create_and_train_model(REPO_PATH: str, seed: int = 1234, training_datasets=['geo_weakly_balanced.csv','geo_unbalanced.csv','geo_strongly_balanced.csv','mixed_weakly_balanced.csv','mixed_strongly_balanced.csv']):
+def create_and_train_model(REPO_PATH: str, seed: int = 1234, pin_memory:bool=False, num_workers:int=0, training_datasets=['geo_weakly_balanced.csv','geo_unbalanced.csv','geo_strongly_balanced.csv','mixed_weakly_balanced.csv','mixed_strongly_balanced.csv']):
     """
     Creates and trains a model using the specified repository path.
 
@@ -463,7 +474,8 @@ def create_and_train_model(REPO_PATH: str, seed: int = 1234, training_datasets=[
                                          starting_regional_loss_portion=hyperparameters[
                                              i]['starting_regional_loss_portion'],
                                          regional_loss_decline=hyperparameters[i]['regional_loss_decline'],
-                                         train_dataset_name=elem, seed=seed)
+                                         train_dataset_name=elem, seed=seed,
+                                         pin_memory=pin_memory, num_workers=num_workers)
             trained_model.test_model(test_dataset, 'test_set')
             trained_model.test_model(zeroshot_test_dataset, 'zero_shot')
     print("END")
