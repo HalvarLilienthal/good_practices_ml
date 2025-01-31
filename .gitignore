@@ -1,6 +1,7 @@
 venv_gpml/
 **/__pycache__/
 finetuning/runs/
+finetuning/finetuning/runs/
 stopped_experiment/
 saved_models
 
