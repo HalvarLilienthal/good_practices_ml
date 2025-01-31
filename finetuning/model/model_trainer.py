@@ -52,7 +52,7 @@ class ModelTrainer():
         #torch.manual_seed_all(seed)
         torch.cuda.manual_seed(seed)
         #torch.cuda.manual_seed_all(seed)
-        torch.use_deterministic_algorithms(True)
+        #torch.use_deterministic_algorithms(True)
         random.seed(seed)
         np.random.seed(seed)
 
@@ -470,7 +470,7 @@ def create_and_train_model(REPO_PATH: str, seed: int = 1234, training_datasets=[
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Pretrained Model')
-    parser.add_argument('--yaml_path', metavar='str', required=True,
+    parser.add_argument('--yaml_path', metavar='str', required=False, default='../paths.yaml',
                         help='The path to the yaml file with the stored paths')
     # parser.add_argument('--training_dataset_name', metavar='str', required=True, help='the name of the dataset')
     # parser.add_argument('--starting_regional_loss_portion', metavar='float', required=True, help='the starting regional loss portion')
