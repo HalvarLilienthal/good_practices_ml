@@ -15,7 +15,7 @@ import ast
 import sklearn.model_selection
 from sklearn.metrics import confusion_matrix
 import seaborn as sn
-from torch.utils.data import DataLoader, TensorDataset
+from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 import torch.nn.functional as F
 import argparse
@@ -31,7 +31,7 @@ class ModelTrainer():
                  region_list: str, num_folds: int=10, num_epochs:int=3, learning_rate: float=0.001,
                  starting_regional_loss_portion: float=0.9, regional_loss_decline: float=0.2,
                  train_dataset_name: str="Balanced", batch_size: int=260, seed: int=123,
-                 pin_memory:bool=False, num_workers:int=0) -> None:
+                 pin_memory:bool=False, num_workers:int=0, pruning_config = None) -> None:
         """
         Initializes the ModelTrainer class.
 
@@ -85,6 +85,7 @@ class ModelTrainer():
         self.batch_size = batch_size
         self.pin_memory = pin_memory
         self.num_workers = num_workers
+        self.pruning_config = pruning_config
 
         # self.region_criterion = Regional_Loss(self.country_list, self.region_list)
         self.log_dir=f'finetuning/runs/seed_{seed}/{self.training_dataset_name[:-4]}/starting_regional_loss_portion-{starting_regional_loss_portion}/regional_loss_decline-{regional_loss_decline}/{self.timestamp}'
@@ -127,24 +128,20 @@ class ModelTrainer():
         self.writer.flush()
 
 
-    def train_one_fold(self, train_loader):
+    def train_one_fold(self, train_loader, dataset, pruning_dict):
         """Train one Epoch of the model. Based on Pytorch Tutorial.
 
         Args:
-            epoch_index (int): Current epoch
-            tb_writer (orch.utils.tensorboard.writer.SummaryWriter): Tensorboard wirter
+            train_loader (DataLoader): DataLoader for the training dataset
+            dataset (Dataset): The training dataset
+            pruning_dict (dict): Dictionary to store pruning metrics
 
         Returns:
             float: Average loss for the epoch
         """
         running_loss = 0.
 
-        # Here, we use enumerate(training_loader) instead of
-        # iter(training_loader) so that we can track the batch
-        # index and do some intra-epoch reporting
-        for i, data in enumerate(train_loader):
-
-            # Zero gradients for every batch!
+        for batch_idx, data in enumerate(train_loader):
             self.optimizer.zero_grad()
             # Every data instance is an input + label pair
             inputs, labels = data
@@ -157,6 +154,17 @@ class ModelTrainer():
             loss = self.calculate_weighted_loss(regional_loss, country_loss)
 
             loss.backward()
+
+            # Compute pruning metric for each sample
+            if self.pruning_config:
+                for j in range(inputs.size(0)):
+                    if self.pruning_config["loss_based"]:
+                        pruning_metric = loss.item()
+                    else:
+                        pruning_metric = torch.cat([param.grad.view(-1) for param in self.model.parameters() if param.grad is not None]).sum().item()
+                    sample_idx = dataset.indices[batch_idx * train_loader.batch_size + j]
+                    pruning_dict[sample_idx] = pruning_metric
+
             # Adjust learning weights
             self.optimizer.step()
             # Gather data and report
@@ -198,11 +206,22 @@ class ModelTrainer():
         worker_seed = torch.initial_seed() % 2**32
         np.random.seed(worker_seed)
         random.seed(worker_seed)
-        
+
+    def prune_samples(self, pruning_dict, threshold):
+        pruning_metrics = np.array(list(pruning_dict.values()))
+        prune_indices = np.argsort(pruning_metrics)[:int(len(pruning_metrics) * threshold)]
+        prune_indices = prune_indices.tolist()  # Convert to list of integers
+        return [list(pruning_dict.keys())[i] for i in prune_indices]
+
     def start_training(self):
         timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
         validation_size = math.floor(
             len(self.train_dataframe.index) / self.num_folds)
+
+        # Global dictionary to store pruning metrics
+        pruning_dict = {idx: np.inf for idx in self.train_dataframe.index}
+        pruned_indices = []
+
         for epoch_index in range(self.num_epochs):
             targets = []
             outputs = torch.tensor([], dtype=torch.float32, device=self.device)
@@ -222,6 +241,8 @@ class ModelTrainer():
                     drop_indices = range(
                         fold_index*validation_size, (fold_index+1)*validation_size)
 
+                if self.pruning_config:
+                    drop_indices = list(set(drop_indices).union(set(pruned_indices)).intersection(self.train_dataframe.index))
                 fold_training_df = self.train_dataframe.drop(drop_indices)
                 train_dataset = load_dataset.EmbeddingDataset_from_df(
                     fold_training_df, 'train')
@@ -234,7 +255,7 @@ class ModelTrainer():
                     num_workers=self.num_workers,
                     pin_memory=self.pin_memory,
                     shuffle=False, worker_init_fn=self.seed_worker, generator=g)
-                avg_training_loss = self.train_one_fold(train_loader)
+                avg_training_loss = self.train_one_fold(train_loader, train_dataset, pruning_dict)
                 if avg_training_loss:
                     self.writer.add_scalar(
                         'Training Loss', avg_training_loss, epoch_index*self.num_folds + fold_index)
@@ -271,6 +292,11 @@ class ModelTrainer():
             torch.save(self.model.state_dict(),
                        f'saved_models/model_{self.training_dataset_name}_{timestamp}_epoch_{epoch_index+1}')
 
+            # Prune samples based on pruning metrics
+            if self.pruning_config:
+                current_pruning_threshold = 1 - (self.pruning_config["initial_threshold"] - (self.pruning_config["initial_threshold"] - self.pruning_config["final_threshold"]) * (epoch_index / self.num_epochs))
+                prune_indices = self.prune_samples(pruning_dict, current_pruning_threshold)
+                pruned_indices.extend(prune_indices)
 
     def test_model(self, test_dataset, test_name) -> None:
         inputs, targets = test_dataset[:]
@@ -419,7 +445,7 @@ class ModelTrainer():
         return loss
 
 
-def create_and_train_model(REPO_PATH: str, seed: int = 1234, pin_memory:bool=False, num_workers:int=0, training_datasets=['geo_weakly_balanced.csv','geo_unbalanced.csv','geo_strongly_balanced.csv','mixed_weakly_balanced.csv','mixed_strongly_balanced.csv']):
+def create_and_train_model(REPO_PATH: str, seed: int = 1234, pin_memory:bool=False, num_workers:int=0, pruning_config=None, training_datasets=['geo_weakly_balanced.csv','geo_unbalanced.csv','geo_strongly_balanced.csv','mixed_weakly_balanced.csv','mixed_strongly_balanced.csv']):
     """
     Creates and trains a model using the specified repository path.
 
@@ -475,7 +501,8 @@ def create_and_train_model(REPO_PATH: str, seed: int = 1234, pin_memory:bool=Fal
                                              i]['starting_regional_loss_portion'],
                                          regional_loss_decline=hyperparameters[i]['regional_loss_decline'],
                                          train_dataset_name=elem, seed=seed,
-                                         pin_memory=pin_memory, num_workers=num_workers)
+                                         pin_memory=pin_memory, num_workers=num_workers,
+                                         pruning_config = pruning_config)
             trained_model.test_model(test_dataset, 'test_set')
             trained_model.test_model(zeroshot_test_dataset, 'zero_shot')
     print("END")

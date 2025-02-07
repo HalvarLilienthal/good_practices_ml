@@ -48,7 +48,14 @@ if __name__ == "__main__":
             try:
                 trainer.create_and_train_model(REPO_PATH, seed, 
                                                pin_memory=args.pin_memory,
-                                               num_workers=os.cpu_count() if args.cpu_count_as_num_workers else 0)
+                                               num_workers=os.cpu_count() if args.cpu_count_as_num_workers else 0,
+                                               #    pruning_config={
+                                               #        "initial_threshold": 0.9,
+                                               #        "final_threshold": 0.5,
+                                               #        # Use loss (True) or gradient (False)
+                                               #        "loss_based": True
+                                               #    }
+                                               )
                 print("Train Time for seed", seed, "is", time.time() - start)
             finally:
                 tracker.stop()

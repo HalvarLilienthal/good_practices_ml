@@ -98,6 +98,7 @@ class EmbeddingDataset_from_df(Dataset):
         self.labels = df['label'].tolist()
         self.model_inputs = torch.tensor([np.frombuffer(eval(value),dtype=np.float32) for value in df['model_input']], dtype=torch.float32)
         self.name = name
+        self.indices = df.index.tolist()
 
     def __len__(self):
         return len(self.labels)
