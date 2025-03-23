@@ -4,6 +4,9 @@ import clip
 import torch
 import pandas as pd
 import sys
+import time
+
+from codecarbon import OfflineEmissionsTracker
 
 sys.path.append('.')
 import PIL
@@ -143,4 +146,22 @@ if __name__ == "__main__":
         paths = yaml.safe_load(file)
         REPO_PATH = paths['repo_path']
         DATA_PATH = paths['data_path']
-        generate_embeddings(REPO_PATH, DATA_PATH, args.gpu)
+
+        start = time.time()
+        tracker = OfflineEmissionsTracker(
+            experiment_id=f"{1}",
+            country_iso_code="DEU",
+            measure_power_secs=5,
+            project_name="generate_embeddings.py",
+            tracking_mode="process",
+
+            # allow_multiple_runs=True,    # Set this to True to allow multiple instances of codecarbon to run at the same time
+        )
+
+        tracker.start()
+
+        try:
+            generate_embeddings(REPO_PATH, DATA_PATH, args.gpu)
+        finally:
+            tracker.stop()
+        print("Generating time is:", time.time() - start)
