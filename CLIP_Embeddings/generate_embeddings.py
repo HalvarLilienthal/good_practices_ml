@@ -1,5 +1,4 @@
 from concurrent.futures import ThreadPoolExecutor
-from typing import List
 
 import clip
 import torch
@@ -8,11 +7,9 @@ import sys
 
 sys.path.append('.')
 import PIL
-import os
 import numpy as np
 from utils import load_dataset
 import argparse
-import ast
 from sklearn.metrics.pairwise import cosine_similarity
 import yaml
 import torch.nn.functional as F
@@ -66,24 +63,26 @@ def calculate_distances(image_embedding, prompt_embeddings: list):
     return model_input.tobytes()
 
 
-def improved_calculate_distances(image_embedding: torch.Tensor, prompt_embeddings: List):
-    """ Berechnet die Cosine Similarity zwischen einem Bild-Embedding und einer Liste von Prompt-Embeddings.
+def gpu_calculate_distances(image_embedding: torch.Tensor, prompt_embeddings: torch.Tensor) -> bytes:
+    """ A GPU accelerated version of the calculation of the cosine similarity between the image embedding and the prompt
+    embeddings
 
     Args:
-        image_embedding (torch.Tensor): Das Bild-Embedding als Tensor
-        prompt_embeddings (list): Liste von Prompt-Embeddings als Tensors
+        image_embedding (torch.Tensor): The image embedding as a tensor
+        prompt_embeddings (list): List of prompt embeddings as a tensor
 
     Returns:
         bytes: Das Model-Input als Binärdaten
     """
-    image_embedding = image_embedding.view(1, -1)
-    prompt_distances = F.cosine_similarity(image_embedding, prompt_embeddings, dim=1)
-    model_input = torch.cat((image_embedding.view(-1), prompt_distances)).float()
+    with torch.inference_mode():
+        image_embedding = image_embedding.view(1, -1)
+        prompt_distances = F.cosine_similarity(image_embedding, prompt_embeddings, dim=1)
+        model_input = torch.cat((image_embedding.view(-1), prompt_distances)).float()
 
     return model_input.cpu().numpy().tobytes()
 
 
-def generate_embeddings(REPO_PATH, DATA_PATH):
+def generate_embeddings(REPO_PATH, DATA_PATH, gpu: bool = False):
     """
     Generates embeddings for the geoguessr, tourist and aerial datasets and saves them to csv files
 
@@ -91,7 +90,7 @@ def generate_embeddings(REPO_PATH, DATA_PATH):
         REPO_PATH (str): The path to the repository
         DATA_PATH (str): The path to the data folder
     """
-    device = "cuda" if torch.cuda.is_available() else "cpu"
+    device = "cuda" if torch.cuda.is_available() and gpu else "cpu"
     model, preprocessor = clip.load("ViT-B/32", device=device)
 
     # load image data
@@ -104,7 +103,7 @@ def generate_embeddings(REPO_PATH, DATA_PATH):
         "Country"].to_list()
     country_prompt = list(map((lambda x: f"This image shows the country {x}"), country_list))
 
-    with torch.no_grad():
+    with torch.inference_mode():
         # generate image embeddings
         geoguessr_df["Embedding"] = geoguessr_df["path"].apply(
             lambda path: model.encode_image(preprocessor(PIL.Image.open(path)).unsqueeze(0).to(device)))
@@ -124,12 +123,15 @@ def generate_embeddings(REPO_PATH, DATA_PATH):
         simple_embedding = model.encode_text(simple_tokens)
         prompt_embedding = model.encode_text(promt_token)
 
+    # Use either CPU (numpy based) or GPU (pytorch based) version of the cosine similarity calculation
+    distance_calculation = calculate_distances if not gpu else gpu_calculate_distances
+
     # generate model inputs, by appending distances to the prompt embeddings
     geoguessr_df["model_input"] = geoguessr_df["Embedding"].apply(
-        lambda x: improved_calculate_distances(x, prompt_embedding))
-    aerial_df["model_input"] = aerial_df["Embedding"].apply(lambda x: improved_calculate_distances(x, prompt_embedding))
+        lambda x: distance_calculation(x, prompt_embedding))
+    aerial_df["model_input"] = aerial_df["Embedding"].apply(lambda x: distance_calculation(x, prompt_embedding))
     tourist_df["model_input"] = tourist_df["Embedding"].apply(
-        lambda x: improved_calculate_distances(x, prompt_embedding))
+        lambda x: distance_calculation(x, prompt_embedding))
 
     # save image embeddings
     improved_save_dataframe_in_batches(geoguessr_df, 2000, f"{REPO_PATH}/CLIP_Embeddings/Image/geoguessr_embeddings")
@@ -149,11 +151,12 @@ if __name__ == "__main__":
                         help='The path to the yaml file with the stored paths', default='../paths.yaml')
     parser.add_argument('-d', '--debug', action='store_true',
                         required=False, help='Enable debug mode', default=False)
-    parser.add_argument('--improved', help="Use an improved version", action='store_true', default=False)
+    parser.add_argument('--gpu', help="Use an GPU accelerated version of this script.", action='store_true',
+                        default=False)
     args = parser.parse_args()
 
     with open(args.yaml_path) as file:
         paths = yaml.safe_load(file)
         REPO_PATH = paths['repo_path']
         DATA_PATH = paths['data_path']
-        generate_embeddings(REPO_PATH, DATA_PATH)
+        generate_embeddings(REPO_PATH, DATA_PATH, args.gpu)
