@@ -22,22 +22,6 @@ def save_dataframe_in_batches(df, batch_size, base_filename):
         batch.to_csv(f"{base_filename}_{i}.csv", index=False)
 
 
-def improved_save_dataframe_in_batches(df, batch_size, base_filename):
-    num_batches = len(df) // batch_size + (1 if len(df) % batch_size > 0 else 0)
-
-    save_batch = lambda df, filename: df.to_csv(filename, index=False)
-
-    num_workers = 8
-    tasks = []
-    with ThreadPoolExecutor(max_workers=num_workers) as executor:
-        for i in range(num_batches):
-            batch = df.iloc[i * batch_size:(i + 1) * batch_size]
-            tasks.append(executor.submit(save_batch, batch, f"{base_filename}_{i}.csv"))
-
-    for task in tasks:
-        task.result()  # Warten auf alle parallelen Schreibvorgänge
-
-
 def calculate_distances(image_embedding, prompt_embeddings: list):
     """ Calculate the cosine similarity between the image embedding and the prompt embeddings
 
@@ -134,9 +118,9 @@ def generate_embeddings(REPO_PATH, DATA_PATH, gpu: bool = False):
         lambda x: distance_calculation(x, prompt_embedding))
 
     # save image embeddings
-    improved_save_dataframe_in_batches(geoguessr_df, 2000, f"{REPO_PATH}/CLIP_Embeddings/Image/geoguessr_embeddings")
-    improved_save_dataframe_in_batches(tourist_df, 2000, f"{REPO_PATH}/CLIP_Embeddings/Image/tourist_embeddings")
-    improved_save_dataframe_in_batches(aerial_df, 2000, f"{REPO_PATH}/CLIP_Embeddings/Image/aerial_embeddings")
+    save_dataframe_in_batches(geoguessr_df, 200_000, f"{REPO_PATH}/CLIP_Embeddings/Image/geoguessr_embeddings")
+    save_dataframe_in_batches(tourist_df, 200_000, f"{REPO_PATH}/CLIP_Embeddings/Image/tourist_embeddings")
+    save_dataframe_in_batches(aerial_df, 200_000, f"{REPO_PATH}/CLIP_Embeddings/Image/aerial_embeddings")
 
     # save prompt embeddings
     torch.save(simple_embedding, f'{REPO_PATH}/CLIP_Embeddings/Prompt/prompt_simple_embedding.pt')
