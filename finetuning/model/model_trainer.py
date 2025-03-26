@@ -31,7 +31,7 @@ class ModelTrainer():
                  region_list: str, num_folds: int=10, num_epochs:int=3, learning_rate: float=0.001,
                  starting_regional_loss_portion: float=0.9, regional_loss_decline: float=0.2,
                  train_dataset_name: str="Balanced", batch_size: int=260, seed: int=123,
-                 pin_memory:bool=False, num_workers:int=0, pruning_config = None) -> None:
+                 pin_memory:bool=False, num_workers:int=0, pruning_config = None, mpt: bool = False) -> None:
         """
         Initializes the ModelTrainer class.
 
@@ -86,6 +86,8 @@ class ModelTrainer():
         self.pin_memory = pin_memory
         self.num_workers = num_workers
         self.pruning_config = pruning_config
+        self.mpt = mpt
+        print(f"MPT status for device '{self.device.type}': {torch.amp.autocast_mode.is_autocast_available(self.device.type)}")
 
         # self.region_criterion = Regional_Loss(self.country_list, self.region_list)
         self.log_dir=f'finetuning/runs/seed_{seed}/{self.training_dataset_name[:-4]}/starting_regional_loss_portion-{starting_regional_loss_portion}/regional_loss_decline-{regional_loss_decline}/{self.timestamp}'
@@ -140,23 +142,29 @@ class ModelTrainer():
             float: Average loss for the epoch
         """
         running_loss = 0.
+        scaler = torch.GradScaler(self.device.type, enabled=self.mpt)
 
         for batch_idx, data in enumerate(train_loader):
             self.optimizer.zero_grad()
             # Every data instance is an input + label pair
             inputs, labels = data
             inputs = inputs.to(self.device)
-            # Make predictions for this batch
-            outputs = self.model(inputs)
 
-            # Compute the loss and its gradients
-            regional_loss, country_loss = self.criterion(outputs, labels)
-            loss = self.calculate_weighted_loss(regional_loss, country_loss)
+            with torch.autocast(device_type=self.device.type, dtype=torch.float16, enabled=self.mpt):
+                # Make predictions for this batch
+                outputs = self.model(inputs)
+                # Compute the loss and its gradients
+                regional_loss, country_loss = self.criterion(outputs, labels)
+                loss = self.calculate_weighted_loss(regional_loss, country_loss)
 
-            loss.backward()
+            # If self.mpt == False, all GradScaler functions become no-ops
+            scaler.scale(loss).backward()
 
             # Compute pruning metric for each sample
             if self.pruning_config:
+                if self.mpt:
+                    scaler.unscale_(self.optimizer)
+
                 for j in range(inputs.size(0)):
                     if self.pruning_config["loss_based"]:
                         pruning_metric = loss.item()
@@ -165,8 +173,10 @@ class ModelTrainer():
                     sample_idx = dataset.indices[batch_idx * train_loader.batch_size + j]
                     pruning_dict[sample_idx] = pruning_metric
 
-            # Adjust learning weights
-            self.optimizer.step()
+            # If self.mpt == False, this becomes a no-op
+            scaler.step(self.optimizer)
+            scaler.update()
+
             # Gather data and report
             running_loss += loss.item()
             self.batch_count += 1
@@ -445,7 +455,7 @@ class ModelTrainer():
         return loss
 
 
-def create_and_train_model(REPO_PATH: str, seed: int = 1234, pin_memory:bool=False, num_workers:int=0, pruning_config=None, training_datasets=['geo_weakly_balanced.csv','geo_unbalanced.csv','geo_strongly_balanced.csv','mixed_weakly_balanced.csv','mixed_strongly_balanced.csv']):
+def create_and_train_model(REPO_PATH: str, seed: int = 1234, pin_memory:bool=False, num_workers:int=0, pruning_config=None, mpt:bool=False, training_datasets=['geo_weakly_balanced.csv','geo_unbalanced.csv','geo_strongly_balanced.csv','mixed_weakly_balanced.csv','mixed_strongly_balanced.csv']):
     """
     Creates and trains a model using the specified repository path.
 
@@ -502,7 +512,8 @@ def create_and_train_model(REPO_PATH: str, seed: int = 1234, pin_memory:bool=Fal
                                          regional_loss_decline=hyperparameters[i]['regional_loss_decline'],
                                          train_dataset_name=elem, seed=seed,
                                          pin_memory=pin_memory, num_workers=num_workers,
-                                         pruning_config = pruning_config)
+                                         pruning_config = pruning_config,
+                                         mpt=mpt)
             trained_model.test_model(test_dataset, 'test_set')
             trained_model.test_model(zeroshot_test_dataset, 'zero_shot')
     print("END")

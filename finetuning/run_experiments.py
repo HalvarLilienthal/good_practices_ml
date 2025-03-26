@@ -22,6 +22,8 @@ if __name__ == "__main__":
                         default=False)
     parser.add_argument('--pin_memory', action='store_true', required=False,
                         help='Set if pin_memory should be used in the data loading', default=False)
+    parser.add_argument('--mpt', action='store_true', required=False, default=False,
+                        help="Enable Mixed Precision training")
     args = parser.parse_args()
 
     with open(args.yaml_path) as file:
@@ -49,6 +51,7 @@ if __name__ == "__main__":
                 trainer.create_and_train_model(REPO_PATH, seed, 
                                                pin_memory=args.pin_memory,
                                                num_workers=os.cpu_count() if args.cpu_count_as_num_workers else 0,
+                                               mpt=args.mpt,
                                                #    pruning_config={
                                                #        "initial_threshold": 0.9,
                                                #        "final_threshold": 0.5,
