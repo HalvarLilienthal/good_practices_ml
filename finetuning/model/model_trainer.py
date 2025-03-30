@@ -24,6 +24,8 @@ import math
 import matplotlib.pyplot as plt
 import random
 import numpy as np
+import torch_tensorrt
+import torch.nn.utils.prune as prune
 
 class ModelTrainer():
 
@@ -31,7 +33,7 @@ class ModelTrainer():
                  region_list: str, num_folds: int=10, num_epochs:int=3, learning_rate: float=0.001,
                  starting_regional_loss_portion: float=0.9, regional_loss_decline: float=0.2,
                  train_dataset_name: str="Balanced", batch_size: int=260, seed: int=123,
-                 pin_memory:bool=False, num_workers:int=0, pruning_config = None, mpt: bool = False) -> None:
+                 pin_memory:bool=False, num_workers:int=0, sample_pruning_config = None, mpt: bool = False) -> None:
         """
         Initializes the ModelTrainer class.
 
@@ -50,16 +52,15 @@ class ModelTrainer():
             seed (int): The seed for the random number generator.
         """
         # set radom seed
-        os.environ['PYTHONHASHSEED']=str(seed)
+        os.environ['PYTHONHASHSEED'] = str(seed)
         torch.manual_seed(seed)
-        #torch.manual_seed_all(seed)
+        # torch.manual_seed_all(seed)
         torch.cuda.manual_seed(seed)
-        #torch.cuda.manual_seed_all(seed)
-        #torch.use_deterministic_algorithms(True)
+        # torch.cuda.manual_seed_all(seed)
+        # torch.use_deterministic_algorithms(True)
         random.seed(seed)
         np.random.seed(seed)
 
-        
         self.model = model
         self.device = torch.device(
             "cuda:0" if torch.cuda.is_available() else "cpu")
@@ -85,50 +86,51 @@ class ModelTrainer():
         self.batch_size = batch_size
         self.pin_memory = pin_memory
         self.num_workers = num_workers
-        self.pruning_config = pruning_config
+        self.sample_pruning_config = sample_pruning_config
         self.mpt = mpt
         print(f"MPT status for device '{self.device.type}': {torch.amp.autocast_mode.is_autocast_available(self.device.type)}")
 
         # self.region_criterion = Regional_Loss(self.country_list, self.region_list)
-        self.log_dir=f'finetuning/runs/seed_{seed}/{self.training_dataset_name[:-4]}/starting_regional_loss_portion-{starting_regional_loss_portion}/regional_loss_decline-{regional_loss_decline}/{self.timestamp}'
+        self.log_dir = f'finetuning/runs/seed_{seed}/{self.training_dataset_name[:-4]}/starting_regional_loss_portion-{starting_regional_loss_portion}/regional_loss_decline-{regional_loss_decline}/{self.timestamp}'
         self.writer = SummaryWriter(log_dir=self.log_dir)
-        self.start_training()
+        # self.start_training()
 
     def add_metrics_and_plot_tb(self, outputs: torch.Tensor, targets, name: str, step: int):
-        per_class_precision, per_class_recall, per_class_f1, _, target_idx = self.criterion.calculate_metrics_per_class(outputs, targets)
+        per_class_precision, per_class_recall, per_class_f1, _, target_idx = self.criterion.calculate_metrics_per_class(
+            outputs, targets)
         self.writer.add_scalar(f'{name} avg Class Precision', per_class_precision.mean(), step)
         self.writer.add_scalar(f'{name} avg Class Recall', per_class_recall.mean(), step)
         self.writer.add_scalar(f'{name} avg Class F1', per_class_f1.mean(), step)
 
         metrics_df = pd.DataFrame({'Precision': per_class_precision, 'Recall': per_class_recall, 'Fscore': per_class_f1})
         metrics_df.index = target_idx
-        
+
         ignored_classes = metrics_df[(metrics_df['Precision'] == 0) & (metrics_df['Recall'] == 0)]
         metrics_df = metrics_df.drop(ignored_classes.index)
 
-        #bar_plot = metrics_df.plot(kind='bar', xlabel='Class', ylabel='Metrics', title='Metrics per Country, {len(ignored_classes)} ignored countries.').get_figure()
-        #self.writer.add_figure(f'{name} Metrics per Country', bar_plot, step)
+        # bar_plot = metrics_df.plot(kind='bar', xlabel='Class', ylabel='Metrics', title='Metrics per Country, {len(ignored_classes)} ignored countries.').get_figure()
+        # self.writer.add_figure(f'{name} Metrics per Country', bar_plot, step)
         self.writer.add_scalar(f'{name} Number of Ignored Classes', len(ignored_classes), step)
 
         # Calculate metrics per region
-        per_region_precision, per_region_recall, per_region_f1, _, region_index = self.criterion.calculate_metrics_per_region(outputs, targets)
+        per_region_precision, per_region_recall, per_region_f1, _, region_index = self.criterion.calculate_metrics_per_region(
+            outputs, targets)
         self.writer.add_scalar(f'{name} avg Region Precision', per_region_precision.mean(), step)
         self.writer.add_scalar(f'{name} avg Region Recall', per_region_recall.mean(), step)
         self.writer.add_scalar(f'{name} avg Region F1', per_region_f1.mean(), step)
-        region_metrics_df = pd.DataFrame({'Precision': per_region_precision, 'Recall': per_region_recall, 'Fscore': per_region_f1})
-
+        region_metrics_df = pd.DataFrame({'Precision': per_region_precision,
+                                         'Recall': per_region_recall, 'Fscore': per_region_f1})
 
         region_metrics_df.index = region_index
-        
+
         ignored_regions = region_metrics_df[(region_metrics_df['Precision'] == 0) & (region_metrics_df['Recall'] == 0)]
         region_metrics_df = region_metrics_df.drop(ignored_regions.index)
 
-        #region_bar_plot = region_metrics_df.plot(kind='bar', xlabel='Region', ylabel='Metrics', title=f'Metrics per Region, {len(ignored_regions)} ignored regions.').get_figure()
-        #self.writer.add_figure(f'{name} Metrics per Region', region_bar_plot, step)
+        # region_bar_plot = region_metrics_df.plot(kind='bar', xlabel='Region', ylabel='Metrics', title=f'Metrics per Region, {len(ignored_regions)} ignored regions.').get_figure()
+        # self.writer.add_figure(f'{name} Metrics per Region', region_bar_plot, step)
         self.writer.add_scalar(f'{name} Number of Ignored Regions', len(ignored_regions), step)
         self.writer.add_text(f'{name} List of Ignored Regions', ';'.join(ignored_regions.index.to_list()), step)
         self.writer.flush()
-
 
     def train_one_fold(self, train_loader, dataset, pruning_dict):
         """Train one Epoch of the model. Based on Pytorch Tutorial.
@@ -161,12 +163,12 @@ class ModelTrainer():
             scaler.scale(loss).backward()
 
             # Compute pruning metric for each sample
-            if self.pruning_config:
+            if self.sample_pruning_config:
                 if self.mpt:
                     scaler.unscale_(self.optimizer)
 
                 for j in range(inputs.size(0)):
-                    if self.pruning_config["loss_based"]:
+                    if self.sample_pruning_config["loss_based"]:
                         pruning_metric = loss.item()
                     else:
                         pruning_metric = torch.cat([param.grad.view(-1) for param in self.model.parameters() if param.grad is not None]).sum().item()
@@ -189,25 +191,24 @@ class ModelTrainer():
         inputs, targets = validation_dataset[:]
         inputs = inputs.to(self.device)
         outputs = self.model(inputs)
-        
+
         avg_validation_region_accuracy = self.criterion.claculate_region_accuracy(
             outputs, targets)
         avg_validation_accuracy = self.criterion.calculate_country_accuracy(
             outputs, targets)
-        
 
         # avg_validation_loss = validation_loss / len(validation_loader)
         print('Epoch {} Fold {} Validation Accuracy: {}, Validation Regional Accuracy: {}'.format(
             epoch_index + 1, fold_index + 1, avg_validation_accuracy, avg_validation_region_accuracy))
         self.writer.add_scalar(
-            'Validation Accuracy', avg_validation_accuracy, epoch_index*self.num_folds + fold_index)
+            'Validation Accuracy', avg_validation_accuracy, epoch_index * self.num_folds + fold_index)
         self.writer.add_scalar('Validation Regional Accuracy',
-                               avg_validation_region_accuracy, epoch_index*self.num_folds + fold_index)
+                               avg_validation_region_accuracy, epoch_index * self.num_folds + fold_index)
         try:
-            self.add_metrics_and_plot_tb(outputs, targets, "Epoch Validation", epoch_index*self.num_folds + fold_index)
+            self.add_metrics_and_plot_tb(outputs, targets, "Epoch Validation", epoch_index * self.num_folds + fold_index)
         except Exception as e:
             print(e)
-        
+
         return targets, outputs
         # self.writer.add_scalar('Validation Loss', avg_validation_loss, epoch_index*self.num_folds + fold_index)
 
@@ -242,16 +243,16 @@ class ModelTrainer():
                 fold_validation_df = pd.DataFrame()
                 drop_indices = []
                 if fold_index == self.num_folds - 1:
-                    fold_validation_df = self.train_dataframe.iloc[fold_index*validation_size:]
+                    fold_validation_df = self.train_dataframe.iloc[fold_index * validation_size:]
                     drop_indices = range(
-                        fold_index*validation_size, len(self.train_dataframe.index))
+                        fold_index * validation_size, len(self.train_dataframe.index))
                 else:
-                    fold_validation_df = self.train_dataframe.iloc[fold_index*validation_size: (
-                        fold_index+1)*validation_size]
+                    fold_validation_df = self.train_dataframe.iloc[fold_index * validation_size: (
+                        fold_index + 1) * validation_size]
                     drop_indices = range(
-                        fold_index*validation_size, (fold_index+1)*validation_size)
+                        fold_index * validation_size, (fold_index + 1) * validation_size)
 
-                if self.pruning_config:
+                if self.sample_pruning_config:
                     drop_indices = list(set(drop_indices).union(set(pruned_indices)).intersection(self.train_dataframe.index))
                 fold_training_df = self.train_dataframe.drop(drop_indices)
                 train_dataset = load_dataset.EmbeddingDataset_from_df(
@@ -261,14 +262,14 @@ class ModelTrainer():
                 g.manual_seed(0)
 
                 train_loader = DataLoader(
-                    train_dataset,batch_size=self.batch_size,
+                    train_dataset, batch_size=self.batch_size,
                     num_workers=self.num_workers,
                     pin_memory=self.pin_memory,
                     shuffle=False, worker_init_fn=self.seed_worker, generator=g)
                 avg_training_loss = self.train_one_fold(train_loader, train_dataset, pruning_dict)
                 if avg_training_loss:
                     self.writer.add_scalar(
-                        'Training Loss', avg_training_loss, epoch_index*self.num_folds + fold_index)
+                        'Training Loss', avg_training_loss, epoch_index * self.num_folds + fold_index)
 
                 self.model.eval()  # Set the model to evaluation mode
 
@@ -288,23 +289,26 @@ class ModelTrainer():
                 with torch.no_grad():
                     predicitions_idx = torch.argmax(outputs, axis=1).tolist()
                     target_idx = [self.country_list[self.country_list['Country'] == target].index[0] for target in targets]
-                    if epoch_index == self.num_epochs-1:
-                        prediction = [self.country_list.iloc[predicitions_idx[i]]['Country'] for i in range(0, len(predicitions_idx))]
-                        validation_results_dict = {'Label': targets, 'Prediction': prediction, 'Output': outputs.cpu().numpy().tolist()}
+                    if epoch_index == self.num_epochs - 1:
+                        prediction = [self.country_list.iloc[predicitions_idx[i]]['Country']
+                                      for i in range(0, len(predicitions_idx))]
+                        validation_results_dict = {'Label': targets, 'Prediction': prediction,
+                                                   'Output': outputs.cpu().numpy().tolist()}
                         validation_results_dict = pd.DataFrame(validation_results_dict)
                         validation_results_dict.to_csv(self.log_dir + f'/validation_results.csv', index=False)
                     try:
-                        self.add_metrics_and_plot_tb(outputs, targets, "Epoch Validation", epoch_index*self.num_folds)
+                        self.add_metrics_and_plot_tb(outputs, targets, "Epoch Validation", epoch_index * self.num_folds)
                     except Exception as e:
                         print(e)
-                    #self.createConfusionMatrix(target_idx, predicitions_idx, "Validation Confusion Matrix", epoch_index*self.num_folds)
-        
+                    # self.createConfusionMatrix(target_idx, predicitions_idx, "Validation Confusion Matrix", epoch_index*self.num_folds)
+
             torch.save(self.model.state_dict(),
                        f'saved_models/model_{self.training_dataset_name}_{timestamp}_epoch_{epoch_index+1}')
 
             # Prune samples based on pruning metrics
-            if self.pruning_config:
-                current_pruning_threshold = 1 - (self.pruning_config["initial_threshold"] - (self.pruning_config["initial_threshold"] - self.pruning_config["final_threshold"]) * (epoch_index / self.num_epochs))
+            if self.sample_pruning_config:
+                current_pruning_threshold = 1 - (self.sample_pruning_config["initial_threshold"] - (
+                    self.sample_pruning_config["initial_threshold"] - self.sample_pruning_config["final_threshold"]) * (epoch_index / self.num_epochs))
                 prune_indices = self.prune_samples(pruning_dict, current_pruning_threshold)
                 pruned_indices.extend(prune_indices)
 
@@ -312,12 +316,12 @@ class ModelTrainer():
         inputs, targets = test_dataset[:]
         inputs = inputs.to(self.device)
         outputs = self.model(inputs)
-        
+
         avg_test_region_accuracy = self.criterion.claculate_region_accuracy(
             outputs, targets)
         avg_test_accuracy = self.criterion.calculate_country_accuracy(
             outputs, targets)
-        
+
         self.writer.add_scalar(
             'Test Accuracy', avg_test_accuracy, )
         self.writer.add_scalar('Test Regional Accuracy',
@@ -326,7 +330,7 @@ class ModelTrainer():
         with torch.no_grad():
             predicitions_idx = torch.argmax(outputs, axis=1).tolist()
             target_idx = [self.country_list[self.country_list['Country'] == target].index[0] for target in targets]
-            #self.createConfusionMatrix(target_idx, predicitions_idx, "Test Confusion Matrix", None)
+            # self.createConfusionMatrix(target_idx, predicitions_idx, "Test Confusion Matrix", None)
             try:
                 self.add_metrics_and_plot_tb(outputs, targets, "Test", None)
             except Exception as e:
@@ -337,7 +341,6 @@ class ModelTrainer():
             test_result_dataframe.to_csv(self.log_dir + f'/test_results_{test_name}.csv', index=False)
         print('Training Dataset {} Test Accuracy: {}, Test Regional Accuracy: {}'.format(
             self.training_dataset_name, avg_test_accuracy, avg_test_region_accuracy))
-
 
     def createConfusionMatrix(self, true_countries, predicted_countries, figure_label, index):
         """
@@ -439,7 +442,7 @@ class ModelTrainer():
         loss = torch.tensor([], dtype=torch.float32, device=self.device)
         loss.requires_grad = True
         total_loss = (self.regional_portion * regional_loss_mean) + \
-            ((1-self.regional_portion) * country_loss_mean)
+            ((1 - self.regional_portion) * country_loss_mean)
 
         loss = torch.cat((loss, total_loss.unsqueeze(0)), dim=0)
 
@@ -451,11 +454,41 @@ class ModelTrainer():
         self.writer.add_scalar('Weighted Regional Batch Loss',
                                self.regional_portion * regional_loss_mean.item(), self.batch_count)
         self.writer.add_scalar('Weighted Country Batch Loss', (
-            1-self.regional_portion) * country_loss_mean.item(), self.batch_count)
+            1 - self.regional_portion) * country_loss_mean.item(), self.batch_count)
         return loss
 
+    def prune(self, prune_config:dict):
+        for _, module in list(self.model.named_modules())[1:]:
+            pruned = False
+            if prune_config["structured"]:
+                # prune 20% of connections in all conv layers
+                if isinstance(module, torch.nn.Conv2d):
+                    prune.l1_unstructured(module, name='weight', amount=prune_config["structured_conv"])
+                    pruned = True
+                # prune 40% of connections in all linear layers
+                elif isinstance(module, torch.nn.Linear):
+                    prune.l1_unstructured(module, name='weight', amount=prune_config["structured_linear"])
+                    pruned = True
+            else:
+                prune.random_unstructured(module, name="weight", amount=prune_config["unstructured_all"])
+                pruned = True
+            if pruned:
+                # Set the actual weight values to 0
+                prune.remove(module, 'weight')
+                # TODO: Use sparsity for optimization
+                # module.weight = torch.nn.Parameter(module.weight.data.to_sparse())
 
-def create_and_train_model(REPO_PATH: str, seed: int = 1234, pin_memory:bool=False, num_workers:int=0, pruning_config=None, mpt:bool=False, training_datasets=['geo_weakly_balanced.csv','geo_unbalanced.csv','geo_strongly_balanced.csv','mixed_weakly_balanced.csv','mixed_strongly_balanced.csv']):
+    def quantise(self, quantise_config) -> None:
+        self.model = torch.compile(self.model, **quantise_config)
+
+
+def create_and_train_model(REPO_PATH: str, seed: int = 1234, pin_memory: bool = False, num_workers: int = 0, sample_pruning_config=None, mpt:bool=False, inference_pruning_config=None, quantise_config=None,
+                           training_datasets=['geo_weakly_balanced.csv',
+                                                'geo_unbalanced.csv',
+                                                'geo_strongly_balanced.csv',
+                                                'mixed_weakly_balanced.csv',
+                                                'mixed_strongly_balanced.csv'
+                                              ]):
     """
     Creates and trains a model using the specified repository path.
 
@@ -476,29 +509,29 @@ def create_and_train_model(REPO_PATH: str, seed: int = 1234, pin_memory:bool=Fal
         test_df, "test")
     zeroshot_test_dataset = load_dataset.EmbeddingDataset_from_df(
         zeroshot_test_df, "test")
-    #test_loader = DataLoader(test_dataset, shuffle=False)
+    # test_loader = DataLoader(test_dataset, shuffle=False)
 
-    #training_datasets = [
+    # training_datasets = [
     #    'geo_weakly_balanced.csv',
     #    'geo_unbalanced.csv',
     #    'geo_strongly_balanced.csv',
     #    'mixed_weakly_balanced.csv',
     #    'mixed_strongly_balanced.csv'
-    #]
+    # ]
 
     for elem in training_datasets:
         train_df = pd.read_csv(
             f'{REPO_PATH}/CLIP_Embeddings/Training/{elem}')
-        
+
         hyperparameters = [
-            {'starting_regional_loss_portion': 0.0,
-             'regional_loss_decline': 1.0},
+            # {'starting_regional_loss_portion': 0.0,
+            #  'regional_loss_decline': 1.0},
             {'starting_regional_loss_portion': 0.25,
              'regional_loss_decline': 1.0},
-            {'starting_regional_loss_portion': 0.8,
-             'regional_loss_decline': 0.75},
-             {'starting_regional_loss_portion': 0.5,
-             'regional_loss_decline': 1.0}
+            # {'starting_regional_loss_portion': 0.8,
+            #  'regional_loss_decline': 0.75},
+            # {'starting_regional_loss_portion': 0.5,
+            #  'regional_loss_decline': 1.0}
         ]
         bs = 261
         if elem == 'geo_strongly_balanced.csv' or elem == 'mixed_strongly_balanced.csv':
@@ -512,11 +545,16 @@ def create_and_train_model(REPO_PATH: str, seed: int = 1234, pin_memory:bool=Fal
                                          regional_loss_decline=hyperparameters[i]['regional_loss_decline'],
                                          train_dataset_name=elem, seed=seed,
                                          pin_memory=pin_memory, num_workers=num_workers,
-                                         pruning_config = pruning_config,
+                                         sample_pruning_config = sample_pruning_config,
                                          mpt=mpt)
+            if inference_pruning_config:
+                trained_model.prune(inference_pruning_config)
+            if quantise_config:
+                trained_model.quantise(quantise_config)
             trained_model.test_model(test_dataset, 'test_set')
             trained_model.test_model(zeroshot_test_dataset, 'zero_shot')
     print("END")
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Pretrained Model')
