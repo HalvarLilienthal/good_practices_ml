@@ -139,7 +139,7 @@ if __name__ == "__main__":
     parser.add_argument('-d', '--debug', action='store_true',
                         required=False, help='Enable debug mode', default=False)
     parser.add_argument('--gpu', help="Use an GPU accelerated version of this script.", action='store_true',
-                        default=False)
+                        default=True)
     args = parser.parse_args()
 
     with open(args.yaml_path) as file:

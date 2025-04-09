@@ -22,6 +22,8 @@ if __name__ == "__main__":
                         default=False)
     parser.add_argument('--pin_memory', action='store_true', required=False,
                         help='Set if pin_memory should be used in the data loading', default=False)
+    parser.add_argument('--mpt', action='store_true', required=False, default=False,
+                        help="Enable Mixed Precision training")
     args = parser.parse_args()
 
     with open(args.yaml_path) as file:
@@ -49,12 +51,27 @@ if __name__ == "__main__":
                 trainer.create_and_train_model(REPO_PATH, seed, 
                                                pin_memory=args.pin_memory,
                                                num_workers=os.cpu_count() if args.cpu_count_as_num_workers else 0,
-                                               #    pruning_config={
-                                               #        "initial_threshold": 0.9,
-                                               #        "final_threshold": 0.5,
-                                               #        # Use loss (True) or gradient (False)
-                                               #        "loss_based": True
-                                               #    }
+                                               mpt=args.mpt,
+                                               #sample_pruning_config={
+                                               #    "initial_threshold": 0.9,
+                                               #    "final_threshold": 0.7,
+                                               #    # Use loss (True) or gradient (False)
+                                               #    "loss_based": True
+                                               #},
+                                               #inference_pruning_config={
+                                                   # Whether to use structured l1 weight pruning or unstructured random pruning
+                                               #    "structured": True,
+                                               #    # The percentage of weights to prune in Conv2d layers in structured pruning
+                                               #    "structured_conv": 0.2,
+                                                   # The percentage of weights to prune in Linear layers in structured pruning
+                                               #    "structured_linear": 0.4,
+                                              #     # The percentage of weights to prune in All layers in unstructured pruning
+                                               #    "unstructured_all": 0.3
+                                               #},
+                                               #quantise_config={
+                                               #    "backend": "torch_tensorrt"
+                                                   # See torch.compile for more parameters
+                                               #}
                                                )
                 print("Train Time for seed", seed, "is", time.time() - start)
             finally:
