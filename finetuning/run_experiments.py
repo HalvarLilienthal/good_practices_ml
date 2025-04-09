@@ -29,7 +29,7 @@ if __name__ == "__main__":
         DATA_PATH = paths['data_path']
         REPO_PATH = paths['repo_path']
         #create_datasets_from_embddings.create_datasets_from_embddings(REPO_PATH, seed=1234)
-        seeds = [4808,4947,5723,3838,5836,3947,8956,5402,1215,8980]
+        seeds = [4808] #,4947,5723,3838,5836,3947,8956,5402,1215,8980]
         all_start = time.time()
         for seed in seeds:
             start = time.time()

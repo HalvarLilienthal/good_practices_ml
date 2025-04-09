@@ -445,7 +445,7 @@ class ModelTrainer():
         return loss
 
 
-def create_and_train_model(REPO_PATH: str, seed: int = 1234, pin_memory:bool=False, num_workers:int=0, pruning_config=None, training_datasets=['geo_weakly_balanced.csv','geo_unbalanced.csv','geo_strongly_balanced.csv','mixed_weakly_balanced.csv','mixed_strongly_balanced.csv']):
+def create_and_train_model(REPO_PATH: str, seed: int = 1234, pin_memory:bool=False, num_workers:int=0, pruning_config=None, training_datasets=['geo_weakly_balanced.csv', 'geo_unbalanced.csv','geo_strongly_balanced.csv','mixed_weakly_balanced.csv','mixed_strongly_balanced.csv']):
     """
     Creates and trains a model using the specified repository path.
 
@@ -481,14 +481,14 @@ def create_and_train_model(REPO_PATH: str, seed: int = 1234, pin_memory:bool=Fal
             f'{REPO_PATH}/CLIP_Embeddings/Training/{elem}')
         
         hyperparameters = [
-            {'starting_regional_loss_portion': 0.0,
-             'regional_loss_decline': 1.0},
+            #{'starting_regional_loss_portion': 0.0,
+            # 'regional_loss_decline': 1.0},
             {'starting_regional_loss_portion': 0.25,
              'regional_loss_decline': 1.0},
-            {'starting_regional_loss_portion': 0.8,
-             'regional_loss_decline': 0.75},
-             {'starting_regional_loss_portion': 0.5,
-             'regional_loss_decline': 1.0}
+           # {'starting_regional_loss_portion': 0.8,
+            # 'regional_loss_decline': 0.75},
+            # {'starting_regional_loss_portion': 0.5,
+            # 'regional_loss_decline': 1.0}
         ]
         bs = 261
         if elem == 'geo_strongly_balanced.csv' or elem == 'mixed_strongly_balanced.csv':

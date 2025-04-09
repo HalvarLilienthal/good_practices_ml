@@ -153,7 +153,7 @@ if __name__ == "__main__":
             country_iso_code="DEU",
             measure_power_secs=5,
             project_name="generate_embeddings.py",
-            tracking_mode="process",
+            tracking_mode="process"
 
             # allow_multiple_runs=True,    # Set this to True to allow multiple instances of codecarbon to run at the same time
         )

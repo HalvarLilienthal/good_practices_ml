@@ -86,6 +86,8 @@ class Regional_Loss(torch.nn.Module):
         target_region_idx = torch.tensor(
             [self.regions_dict[target] for target in target_countries_idxs], device=self.device)
         # sum the outputs of the countries in each region
+        outputs = outputs.to(self.device)
+        self.selective_sum_operator = self.selective_sum_operator.to(self.device)
         region_outputs = torch.matmul(
             outputs, self.selective_sum_operator.transpose(0, 1))
 
@@ -190,7 +192,7 @@ class Regional_Loss(torch.nn.Module):
         for idx, country in enumerate(unique_countries):
             true_pos = target_countries == country
             pred_pos = (country_predictions_idxs == country).numpy()
-            region = self.regions_dict[country]
+            region = self.regions_dict[country].to(self.device)
             true_region = (target_region_idx == region).numpy()
             pred_region = (region_predictions_idxs == region).numpy()
             # calculate the true positive, including the half true positive when the region is correct but the country is wrong

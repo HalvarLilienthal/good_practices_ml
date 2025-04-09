@@ -1,8 +1,8 @@
 #!/bin/bash
 
 # Set the source and destination directories
-source_dir="path/to/finetuning/runs/output"
-destination_dir="path/to/finetuning/runs/output/merged_seeds"
+source_dir="./finetuning/runs/"
+destination_dir="./finetuning/runs/merged_seeds"
 
 # Loop through all the files in the source directory
 for file in "$source_dir"/*/*/*/*/*/*; do
