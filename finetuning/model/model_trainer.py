@@ -92,7 +92,7 @@ class ModelTrainer():
         # self.region_criterion = Regional_Loss(self.country_list, self.region_list)
         self.log_dir = f'finetuning/runs/seed_{seed}/{self.training_dataset_name[:-4]}/starting_regional_loss_portion-{starting_regional_loss_portion}/regional_loss_decline-{regional_loss_decline}/{self.timestamp}'
         self.writer = SummaryWriter(log_dir=self.log_dir)
-        # self.start_training()
+        self.start_training()
 
     def add_metrics_and_plot_tb(self, outputs: torch.Tensor, targets, name: str, step: int):
         per_class_precision, per_class_recall, per_class_f1, _, target_idx = self.criterion.calculate_metrics_per_class(
@@ -483,10 +483,10 @@ class ModelTrainer():
 
 def create_and_train_model(REPO_PATH: str, seed: int = 1234, pin_memory: bool = False, num_workers: int = 0, sample_pruning_config=None, mpt:bool=False, inference_pruning_config=None, quantise_config=None,
                            training_datasets=['geo_weakly_balanced.csv',
-                                                'geo_unbalanced.csv',
-                                                'geo_strongly_balanced.csv',
-                                                'mixed_weakly_balanced.csv',
-                                                'mixed_strongly_balanced.csv'
+                                                # 'geo_unbalanced.csv',
+                                                # 'geo_strongly_balanced.csv',
+                                                # 'mixed_weakly_balanced.csv',
+                                                # 'mixed_strongly_balanced.csv'
                                               ]):
     """
     Creates and trains a model using the specified repository path.
