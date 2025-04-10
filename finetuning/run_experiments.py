@@ -24,6 +24,8 @@ if __name__ == "__main__":
                         help='Set if pin_memory should be used in the data loading', default=False)
     parser.add_argument('--mpt', action='store_true', required=False, default=False,
                         help="Enable Mixed Precision training")
+    parser.add_argument('--gradient_accumulation_batches', required=False, default=1,
+                        help="Amount of batches to use for gradient accumulation")
     args = parser.parse_args()
 
     os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"
@@ -54,6 +56,7 @@ if __name__ == "__main__":
                                                pin_memory=args.pin_memory,
                                                num_workers=os.cpu_count() if args.cpu_count_as_num_workers else 0,
                                                mpt=args.mpt,
+                                               gradient_accumulation_batches=args.gradient_accumulation_batches,
                                                #sample_pruning_config={
                                                #    "initial_threshold": 0.9,
                                                #    "final_threshold": 0.7,

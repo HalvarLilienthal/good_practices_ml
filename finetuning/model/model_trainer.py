@@ -29,10 +29,11 @@ import torch.nn.utils.prune as prune
 class ModelTrainer():
 
     def __init__(self, model: torch.nn.Module, train_dataframe: pd.DataFrame, country_list: str,
-                 region_list: str, num_folds: int=10, num_epochs:int=3, learning_rate: float=0.001,
-                 starting_regional_loss_portion: float=0.9, regional_loss_decline: float=0.2,
-                 train_dataset_name: str="Balanced", batch_size: int=260, seed: int=123,
-                 pin_memory:bool=False, num_workers:int=0, sample_pruning_config = None, mpt: bool = False) -> None:
+                 region_list: str, num_folds: int = 10, num_epochs: int = 3, learning_rate: float = 0.001,
+                 starting_regional_loss_portion: float = 0.9, regional_loss_decline: float = 0.2,
+                 train_dataset_name: str = "Balanced", batch_size: int = 260, seed: int = 123,
+                 pin_memory: bool = False, num_workers: int = 0, sample_pruning_config=None, mpt: bool = False,
+                 gradient_accumulation_batches: int = 1) -> None:
         """
         Initializes the ModelTrainer class.
 
@@ -87,6 +88,7 @@ class ModelTrainer():
         self.num_workers = num_workers
         self.sample_pruning_config = sample_pruning_config
         self.mpt = mpt
+        self.gradient_accumulation_batches = gradient_accumulation_batches
         print(f"MPT status for device '{self.device.type}': {torch.amp.autocast_mode.is_autocast_available(self.device.type)}")
 
         # self.region_criterion = Regional_Loss(self.country_list, self.region_list)
@@ -159,7 +161,7 @@ class ModelTrainer():
                 loss = self.calculate_weighted_loss(regional_loss, country_loss)
 
             # If self.mpt == False, all GradScaler functions become no-ops
-            scaler.scale(loss).backward()
+            scaler.scale(loss / self.gradient_accumulation_batches).backward()
 
             # Compute pruning metric for each sample
             if self.sample_pruning_config:
@@ -175,8 +177,9 @@ class ModelTrainer():
                     pruning_dict[sample_idx] = pruning_metric
 
             # If self.mpt == False, this becomes a no-op
-            scaler.step(self.optimizer)
-            scaler.update()
+            if ((batch_idx + 1) % self.gradient_accumulation_batches == 0) or (batch_idx + 1 == len(train_loader)):
+                scaler.step(self.optimizer)
+                scaler.update()
 
             # Gather data and report
             running_loss += loss.item()
@@ -481,7 +484,8 @@ class ModelTrainer():
         self.model = torch.compile(self.model, **quantise_config)
 
 
-def create_and_train_model(REPO_PATH: str, seed: int = 1234, pin_memory: bool = False, num_workers: int = 0, sample_pruning_config=None, mpt:bool=False, inference_pruning_config=None, quantise_config=None,
+def create_and_train_model(REPO_PATH: str, seed: int = 1234, pin_memory: bool = False, num_workers: int = 0, sample_pruning_config=None, mpt: bool = False, inference_pruning_config=None, quantise_config=None,
+                           gradient_accumulation_batches: int = 1,
                            training_datasets=['geo_weakly_balanced.csv',
                                                 # 'geo_unbalanced.csv',
                                                 # 'geo_strongly_balanced.csv',
@@ -544,8 +548,8 @@ def create_and_train_model(REPO_PATH: str, seed: int = 1234, pin_memory: bool = 
                                          regional_loss_decline=hyperparameters[i]['regional_loss_decline'],
                                          train_dataset_name=elem, seed=seed,
                                          pin_memory=pin_memory, num_workers=num_workers,
-                                         sample_pruning_config = sample_pruning_config,
-                                         mpt=mpt)
+                                         sample_pruning_config=sample_pruning_config,
+                                         mpt=mpt, gradient_accumulation_batches=gradient_accumulation_batches)
             if inference_pruning_config:
                 trained_model.prune(inference_pruning_config)
             if quantise_config:
