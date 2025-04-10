@@ -317,19 +317,19 @@ class ModelTrainer():
     def test_model(self, test_dataset, test_name) -> None:
         inputs, targets = test_dataset[:]
         inputs = inputs.to(self.device)
-        outputs = self.model(inputs)
-
-        avg_test_region_accuracy = self.criterion.claculate_region_accuracy(
-            outputs, targets)
-        avg_test_accuracy = self.criterion.calculate_country_accuracy(
-            outputs, targets)
-
-        self.writer.add_scalar(
-            'Test Accuracy', avg_test_accuracy, )
-        self.writer.add_scalar('Test Regional Accuracy',
-                               avg_test_region_accuracy)
-
         with torch.no_grad():
+            outputs = self.model(inputs)
+
+            avg_test_region_accuracy = self.criterion.claculate_region_accuracy(
+                outputs, targets)
+            avg_test_accuracy = self.criterion.calculate_country_accuracy(
+                outputs, targets)
+
+            self.writer.add_scalar(
+                'Test Accuracy', avg_test_accuracy, )
+            self.writer.add_scalar('Test Regional Accuracy',
+                                avg_test_region_accuracy)
+
             predicitions_idx = torch.argmax(outputs, axis=1).tolist()
             target_idx = [self.country_list[self.country_list['Country'] == target].index[0] for target in targets]
             # self.createConfusionMatrix(target_idx, predicitions_idx, "Test Confusion Matrix", None)
