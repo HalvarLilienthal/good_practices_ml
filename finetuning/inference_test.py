@@ -2,6 +2,8 @@
 import argparse
 import sys
 
+from torch.nn.modules import ReLU, Softmax
+
 sys.path.append('.')
 sys.path.append("../")
 sys.path.append('./scripts')
@@ -32,8 +34,9 @@ def prune_model(model, prune_config: dict):
                 prune.l1_unstructured(module, name='weight', amount=prune_config["structured_linear"])
                 pruned = True
         else:
-            prune.random_unstructured(module, name="weight", amount=prune_config["unstructured_all"])
-            pruned = True
+            if not isinstance(module, ReLU) and not isinstance(module, Softmax):
+                prune.random_unstructured(module, name="weight", amount=prune_config["unstructured_all"])
+                pruned = True
         if pruned:
             # Set the actual weight values to 0
             prune.remove(module, 'weight')
@@ -59,7 +62,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-    tests = ["default", "inference_pruning", "quantisation"]
+    tests = ["default", "inference_pruning_structured", "inference_pruning_unstructured", "quantisation"]
 
     inference_pruning_config = {
         # Whether to use structured l1 weight pruning or unstructured random pruning
@@ -96,7 +99,10 @@ if __name__ == "__main__":
             model.load_state_dict(torch.load(args.model_path), strict=True)
             model.to(device)
 
-            if test == "inference_pruning":
+            if test == "inference_pruning_structured":
+                model = prune_model(model, inference_pruning_config)
+            elif test == "inference_pruning_unstructured":
+                inference_pruning_config["structured"] = False
                 model = prune_model(model, inference_pruning_config)
             elif test == "quantisation":
                 model = quantise_model(model, quantise_config)
