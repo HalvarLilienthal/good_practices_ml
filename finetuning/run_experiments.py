@@ -26,6 +26,8 @@ if __name__ == "__main__":
                         help="Enable Mixed Precision training")
     args = parser.parse_args()
 
+    os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"
+
     with open(args.yaml_path) as file:
         paths = yaml.safe_load(file)
         DATA_PATH = paths['data_path']

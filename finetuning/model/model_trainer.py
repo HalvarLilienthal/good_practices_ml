@@ -56,7 +56,7 @@ class ModelTrainer():
         # torch.manual_seed_all(seed)
         torch.cuda.manual_seed(seed)
         # torch.cuda.manual_seed_all(seed)
-        # torch.use_deterministic_algorithms(True)
+        torch.use_deterministic_algorithms(True)
         random.seed(seed)
         np.random.seed(seed)
 
